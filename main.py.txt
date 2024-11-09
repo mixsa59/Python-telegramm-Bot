@@ -1,0 +1,201 @@
+import telebot
+import pickle
+import time
+from telebot import types
+
+bot = telebot.TeleBot('TOKEN')
+
+limit_summ_day = 35000
+limit_amount_day = 3
+tconv = lambda x: time.strftime("%d.%m.%Y", time.localtime(x))
+type = 'PM / Andrey'
+admins = [11111111111]
+try:
+    with open("users.pickle", "rb") as file:
+        users = pickle.load(file)
+except FileNotFoundError:
+    users = [11111111111]
+    with open("users.pickle", "wb") as file:
+        pickle.dump(users, file)
+
+markup1 = types.ReplyKeyboardMarkup(True )
+btn1 = types.KeyboardButton('Подтвердить')
+btn2 = types.KeyboardButton('Отменить')
+markup1.row(btn1, btn2)
+
+markup_type = types.ReplyKeyboardMarkup(True )
+btn3 = types.KeyboardButton('PM / Andrey')
+btn4 = types.KeyboardButton('Yulia / Alexander')
+markup_type.row(btn3, btn4)
+markup_type.row(btn2)
+
+markup_cancel = types.ReplyKeyboardMarkup(True )
+markup_cancel.row(btn2)
+
+try:
+    with open("data.pickle", "rb") as file:
+        cards = pickle.load(file)
+except FileNotFoundError:
+    cards = []
+    card1 = {'id': 1, 'type':'PM / Andrey' ,'description': ' ', 'summ_day': 0, 'amount_day': 0, 'date': '31.10.24'}
+    cards.append(card1)
+    with open("data.pickle", "wb") as file:
+        pickle.dump(cards, file)
+
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    if  message.from_user.id  in users:
+        return
+    bot.send_message(message.chat.id, 'Введите пароль')
+    bot.register_next_step_handler(message, check_pass)
+
+def check_pass(message):
+    if  message.from_user.id  in users:
+        return
+    if message.text == 'PASS':
+        users.append(message.from_user.id)
+        bot.send_message(message.chat.id, 'Вы получили доступ к боту')
+    else:
+        bot.send_message(message.chat.id, 'Пароль не верный, введите пароль еще раз')
+        bot.register_next_step_handler(message, check_pass)
+
+@bot.message_handler(commands=['info'])
+def info(message):
+    if  not message.from_user.id  in users:
+        return
+    with open("data.pickle", "rb") as file:
+        cards = pickle.load(file)
+    for card in cards:
+        if card['date'] != tconv(message.date):
+            card['date'] = tconv(message.date)
+            card['summ_day'] = 0
+            card['amount_day'] = 0
+            with open("data.pickle", "wb") as file:
+                pickle.dump(cards, file)
+        else:
+            break
+    for card in cards:
+        bot.send_message(message.chat.id, f" ID: {card['id']} \nТип: {card['type']} \n\n{card['description']} \n\nПереводов сегодня: {card['amount_day']} \nНа сумму: {card['summ_day']}")
+
+@bot.message_handler(commands=['add_new_card'])
+def add_new_card_1(message):
+    if  not message.from_user.id  in admins:
+        return
+    bot.send_message(message.chat.id, 'Выберите группу:', reply_markup  = markup_type)
+    bot.register_next_step_handler(message, add_new_card_2)
+
+def add_new_card_2(message):
+    global type
+    if message.text == 'Отменить':
+        bot.send_message(message.chat.id, 'Отменено', reply_markup=types.ReplyKeyboardRemove())
+        return
+    elif message.text == 'PM / Andrey' or message.text == 'Yulia / Alexander':
+        type = message.text
+    else:
+        bot.send_message(message.chat.id, 'Выберите группу:', reply_markup=markup_type)
+        bot.register_next_step_handler(message, add_new_card_2)
+        return
+    bot.send_message(message.chat.id, 'Введите описание новой карты', reply_markup=markup_cancel)
+    bot.register_next_step_handler(message, add_new_card_3)
+
+def add_new_card_3(message):
+    if message.text == 'Отменить':
+        bot.send_message(message.chat.id, 'Отменено', reply_markup=types.ReplyKeyboardRemove())
+        return
+    card = {'id': len(cards) + 1,'type': type, 'description': message.text, 'summ_day': 0, 'amount_day': 0, 'date': tconv(message.date)}
+    cards.append(card)
+    with open("data.pickle", "wb") as file:
+        pickle.dump(cards, file)
+    bot.send_message(message.chat.id, "Новая карта успешно добавлена.")
+
+@bot.message_handler(commands=['delete_card'])
+def delete_card_1(message):
+    if  not message.from_user.id  in admins:
+        return
+    bot.send_message(message.chat.id, 'Введите id карты, которую хотите удалить.', reply_markup  = markup_cancel)
+    bot.register_next_step_handler(message, delete_card_2)
+
+def delete_card_2(message):
+    if message.text == 'Отменить':
+        bot.send_message(message.chat.id, 'Отменено', reply_markup=types.ReplyKeyboardRemove())
+        return
+    try:
+        cards.pop(int(message.text) - 1)
+        i = 1
+        for card in cards:
+            card['id'] = i
+            i+=1
+        with open("data.pickle", "wb") as file:
+            pickle.dump(cards, file)
+        bot.send_message(message.chat.id, "Карта удалена")
+    except:
+        bot.send_message(message.chat.id, 'Ошибка, id карты должно быть числом')
+
+
+@bot.message_handler(commands=['new_payment'])
+def new_payment(message):
+    if  not message.from_user.id  in users:
+        return
+    bot.send_message(message.chat.id, 'Выберите группу', reply_markup  = markup_type)
+    bot.register_next_step_handler(message, new_payment_type)
+
+def new_payment_type(message):
+    global type
+    if message.text == 'Отменить':
+        bot.send_message(message.chat.id, 'Отменено', reply_markup=types.ReplyKeyboardRemove())
+        return
+    elif message.text == 'PM / Andrey' or message.text == 'Yulia / Alexander':
+        type = message.text
+    else:
+        bot.send_message(message.chat.id, 'Выберите группу', reply_markup=markup_type)
+        bot.register_next_step_handler(message, new_payment_type)
+        return
+    bot.send_message(message.chat.id, 'Введите сумму к оплате', reply_markup=markup_cancel)
+    bot.register_next_step_handler(message, new_payment_summ)
+
+def new_payment_summ(message):
+    if message.text == 'Отменить':
+        bot.send_message(message.chat.id, 'Отменено', reply_markup=types.ReplyKeyboardRemove())
+        return
+    try:
+        summ = int(message.text)
+    except ValueError:
+        bot.send_message(message.chat.id, 'В сумме к оплате должны быть только цифры, введите сумму к оплате', reply_markup  = markup_cancel)
+        bot.register_next_step_handler(message, new_payment_summ)
+        return
+    flag = True
+    for card in cards:
+        if card['date'] != tconv(message.date):
+            card['date'] = tconv(message.date)
+            card['summ_day'] = 0
+            card['amount_day'] = 0
+        else:
+            break
+
+    for card in cards:
+        if card['summ_day'] + summ < limit_summ_day and card['amount_day'] < limit_amount_day and card['type'] == type:
+            flag = False
+            card['summ_day'] += summ
+            card['amount_day'] += 1
+            desc1 = card['description']
+            srez1 = desc1.find('NUM')
+            desc = desc1[0: srez1] + str(summ) + desc1[srez1 +3:]
+            bot.send_message(message.chat.id, desc, reply_markup  = markup1)
+            bot.register_next_step_handler(message, new_payment_done)
+            break
+    if flag:
+        bot.send_message(message.chat.id, 'Операция превышает лимиты по картам на сегодня')
+
+def new_payment_done(message):
+    global cards
+    if message.text == 'Подтвердить':
+        with open("data.pickle", "wb") as file:
+            pickle.dump(cards, file)
+        bot.send_message(message.chat.id, 'Успех', reply_markup=types.ReplyKeyboardRemove())
+    if message.text == 'Отменить':
+        with open("data.pickle", "rb") as file:
+            cards = pickle.load(file)
+            bot.send_message(message.chat.id, 'Отменено', reply_markup=types.ReplyKeyboardRemove())
+
+bot.polling(none_stop = True)
